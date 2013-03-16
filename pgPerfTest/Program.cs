@@ -12,14 +12,18 @@ using System;
 
 namespace pgPerfTest {
 	internal class Program {
-		private const int ITERATE_COUNT = 100;
+		private const int ITERATE_COUNT = 10;
 		private static void Main(string[] args) {
 			var connection = DEFAULT_CONNECTION;
 			if(0!=args.Length) {
 				connection = args[0];
 			}
-			CommonPartitionalTestWithDetails(connection);
+			PerformMultiIterationTest<ExplicitUnionViewTest>(connection);
+			PerformMultiIterationTest<Single10MlnQueryTest>(connection);
+			PerformMultiIterationTest<UserAggregateViewNotUnionAll>(connection);
+			PerformMultiIterationTest<UserAggregateViewUnionAll>(connection);
 			PerformMultiIterationTest<AllPartitionsInParallelTest>(connection);
+			CommonPartitionalTestWithDetails(connection);
 		}
 
 		private static void PerformMultiIterationTest<TTest>(string connection) where TTest:IPerformanceTest,new() {
@@ -35,7 +39,16 @@ namespace pgPerfTest {
 					Console.WriteLine();
 				}
 				Console.Write(".");
-				totaltime += test.Execute().ExecuteTime;
+				var result = test.Execute();
+				if(null!=result.Error) {
+					Console.ForegroundColor = ConsoleColor.Red;
+					Console.WriteLine();
+					
+					Console.WriteLine("Ошибка!  {0}:{1} ", result.Error.GetType(), result.Error.Message);
+					Console.ResetColor();
+					break;
+				}
+				totaltime+=result.ExecuteTime;
 			}
 			Console.WriteLine();
 			Console.WriteLine("Общее время на {0} тестов : {1}", ITERATE_COUNT, totaltime);

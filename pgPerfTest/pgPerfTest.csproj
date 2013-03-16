@@ -51,13 +51,17 @@
   <ItemGroup>
     <Compile Include="AsyncPerformanceTestBase.cs" />
     <Compile Include="ExecuteQueryTest.cs" />
+    <Compile Include="ExplicitUnionViewTest.cs" />
     <Compile Include="HalfYear.cs" />
     <Compile Include="IPerformanceTest.cs" />
     <Compile Include="AllPartitionsInParallelTest.cs" />
     <Compile Include="PerformanceResult.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Single10MlnQueryTest.cs" />
     <Compile Include="SinglePartitionQueryingTest.cs" />
+    <Compile Include="UserAggregateViewNotUnionAll.cs" />
+    <Compile Include="UserAggregateViewUnionAll.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

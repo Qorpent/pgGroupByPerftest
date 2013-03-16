@@ -45,6 +45,22 @@ create index y2006_2test_date on groupbytest.y2006_2test (date);
 create index y2007_1test_date on groupbytest.y2007_1test (date);
 create index y2007_2test_date on groupbytest.y2007_2test (date);
 
+create or replace view groupbytest.partitionedunion as 
+	select id,date,data from groupbytest.y2001_1test
+union   select id,date,data from groupbytest.y2001_2test
+union   select id,date,data from groupbytest.y2002_1test
+union   select id,date,data from groupbytest.y2002_2test
+union   select id,date,data from groupbytest.y2003_1test
+union   select id,date,data from groupbytest.y2003_2test
+union   select id,date,data from groupbytest.y2004_1test
+union   select id,date,data from groupbytest.y2004_2test
+union   select id,date,data from groupbytest.y2005_1test
+union   select id,date,data from groupbytest.y2005_2test
+union   select id,date,data from groupbytest.y2006_1test
+union   select id,date,data from groupbytest.y2006_2test
+union   select id,date,data from groupbytest.y2007_1test
+union   select id,date,data from groupbytest.y2007_2test;
+
 -- НИЖЕ ОРГАНИЗУЕМ ГЕНЕРАТОР ДАТ (ИМХО СТРЯПАТЬ ПОД ЭТО ТАБЛИЦЫ И ТЕМ БОЛЕЕ ПРОЦЕДУРЫ - НЕГОЖЕ - ЗАЧЕМ ТАКУЮ ЕРУНДУ ПО ДИСКУ РАЗДАВАТЬ)
 create or replace view groupbytest.yearGenerator as select 2001 as y union select 2002 union select 2003 union select 2004 union select 2005 union select 2006 union select 2007;
 
@@ -75,8 +91,13 @@ create or replace view groupbytest.datagenerator as select y,m,d,date,string as 
 -- select count(*) from  groupbytest.datagenerator == select 2556 * 4092 = 10459152 - то что надо - время полного комплектования вида 200 секунд ~ 3,5 минуты (Lenovo W510)
 
 /* 
-ВЫПОЛНЯТЬ ЭТОТ СКРИПТ ТОЛЬКО ДЛЯ ИНИЦИАЛИЗАЦИИ ТАБЛИЦЫ!!!
+ВЫПОЛНЯТЬ ЭТОТ СКРИПТ ТОЛЬКО ДЛЯ ИНИЦИАЛИЗАЦИИ ТАБЛИЦ!!!
+ЗАГОНЯЕМ ДАННЫЕ В ОДНУ ТАБЛИЦУ на 10 миллионов и их же в типовые партиции по полгода (~700 000)
+
+
 insert into groupbytest.y2001_1test (date, data ) select date, data from groupbytest.datagenerator where y = 2001 and m<=6;
+--Запрос успешно выполнен: 740652 строк изменено за 32336 мс. - для отдельной партиции
+
 insert into groupbytest.y2001_2test (date, data ) select date, data from groupbytest.datagenerator where y = 2001 and m>6;
 
 insert into groupbytest.y2002_1test (date, data ) select date, data from groupbytest.datagenerator where y = 2002 and m<=6;
@@ -99,21 +120,210 @@ insert into groupbytest.y2007_2test (date, data ) select date, data from groupby
 
 
 insert into groupbytest.m10test (date, data ) select date, data from groupbytest.datagenerator ;
--- Запрос успешно выполнен: 10459152 строк изменено за 700402 мс. (Lenovo W510)
+--Запрос успешно выполнен: 10459152 строк изменено за 1086892 мс. - для большой таблицы
+
+
 
 */
-
+-- тест на 10 млн
 EXPLAIN select date,count(*) from groupbytest.m10test  group by date
 /*
 --ВЫПОЛНЕНИЕ:
-Суммарное время выполнения запроса: 3915 ms.
+Суммарное время выполнения запроса: 4300 ms. - худший результат
 2556 строк получено.
 --ПЛАН
 "HashAggregate  (cost=244045.91..244071.47 rows=2556 width=4)"
 "  ->  Seq Scan on m10test  (cost=0.00..191750.61 rows=10459061 width=4)"
 */
 
--- ПРОБУЕМ ИМИТИРОВАТЬ ПАРТИЦИРОВАНИЕ 
+
+*/
+-- тест на 10 млн через полный UNION
+EXPLAIN select date,count(*) from groupbytest.partitionedunion  group by date
+/*
+--ВЫПОЛНЕНИЕ:
+Суммарное время выполнения запроса: 13600-14800 ms. - наихудший результат
+2556 строк получено.
+--ПЛАН
+"HashAggregate  (cost=2693333.36..2693335.36 rows=200 width=4)"
+"  ->  Unique  (cost=2463677.36..2555539.76 rows=9186240 width=44)"
+"        ->  Sort  (cost=2463677.36..2486642.96 rows=9186240 width=44)"
+"              Sort Key: y2001_1test.id, y2001_1test.date, y2001_1test.data"
+"              ->  Append  (cost=0.00..270894.80 rows=9186240 width=44)"
+"                    ->  Seq Scan on y2001_1test  (cost=0.00..13579.52 rows=740652 width=34)"
+"                    ->  Seq Scan on y2001_2test  (cost=0.00..13804.28 rows=752928 width=34)"
+"                    ->  Seq Scan on y2002_1test  (cost=0.00..13579.52 rows=740652 width=34)"
+"                    ->  Seq Scan on y2002_2test  (cost=0.00..13804.28 rows=752928 width=34)"
+"                    ->  Seq Scan on y2003_1test  (cost=0.00..13579.52 rows=740652 width=34)"
+"                    ->  Seq Scan on y2003_2test  (cost=0.00..13804.28 rows=752928 width=34)"
+"                    ->  Seq Scan on y2004_1test  (cost=0.00..13654.44 rows=744744 width=34)"
+"                    ->  Seq Scan on y2004_2test  (cost=0.00..13804.28 rows=752928 width=34)"
+"                    ->  Seq Scan on y2005_1test  (cost=0.00..13579.52 rows=740652 width=34)"
+"                    ->  Seq Scan on y2005_2test  (cost=0.00..13804.28 rows=752928 width=34)"
+"                    ->  Seq Scan on y2006_1test  (cost=0.00..13579.52 rows=740652 width=34)"
+"                    ->  Seq Scan on y2006_2test  (cost=0.00..9538.00 rows=326300 width=126)"
+"                    ->  Seq Scan on y2007_1test  (cost=0.00..9382.96 rows=320996 width=126)"
+"                    ->  Seq Scan on y2007_2test  (cost=0.00..9538.00 rows=326300 width=126)"
+
+*/
+
+-- тест на 1 млн
+EXPLAIN select date,count(*) from groupbytest.y2006_1test  group by date
+
+/*
+--ВЫПОЛНЕНИЕ:
+Суммарное время выполнения запроса: 261-323 ms. (* 14 частей == 3654 - 4522 )
+2556 строк получено.
+--ПЛАН
+"HashAggregate  (cost=10987.94..10989.94 rows=200 width=4)"
+"  ->  Seq Scan on y2006_1test  (cost=0.00..9382.96 rows=320996 width=4)"
+
+*/
+
+
+-- ПРОБУЕМ ИМИТИРОВАТЬ ПОЛЬЗОВТАЛЬСКИЙ АГРЕГАТ, НО БЕЗ ХРАНИМОГО ВИДА
+explain	select date,count(data)  from groupbytest.y2001_1test group by date
+union	select date,count(data)  from groupbytest.y2001_2test group by date
+union	select date,count(data)  from groupbytest.y2002_1test group by date
+union	select date,count(data)  from groupbytest.y2002_2test group by date
+union	select date,count(data)  from groupbytest.y2003_1test group by date
+union	select date,count(data)  from groupbytest.y2003_2test group by date
+union	select date,count(data)  from groupbytest.y2004_1test group by date
+union	select date,count(data)  from groupbytest.y2004_2test group by date
+union	select date,count(data)  from groupbytest.y2005_1test group by date
+union	select date,count(data)  from groupbytest.y2005_2test group by date
+union	select date,count(data)  from groupbytest.y2006_1test group by date
+union	select date,count(data)  from groupbytest.y2006_2test group by date
+union	select date,count(data)  from groupbytest.y2007_1test group by date
+union	select date,count(data)  from groupbytest.y2007_2test group by date
+
+/*
+--ВЫПОЛНЕНИЕ:
+Суммарное время выполнения запроса (среднее): 3900 (за 10 попыток) ms. 
+2556 строк получено.
+--ПЛАН
+"HashAggregate  (cost=244114.79..244140.35 rows=2556 width=30)"
+"  ->  Append  (cost=17282.78..244108.40 rows=2556 width=30)"
+"        ->  Subquery Scan on "*SELECT* 1"  (cost=17282.78..17286.40 rows=181 width=30)"
+"              ->  HashAggregate  (cost=17282.78..17284.59 rows=181 width=30)"
+"                    ->  Seq Scan on y2001_1test  (cost=0.00..13579.52 rows=740652 width=30)"
+"        ->  Subquery Scan on "*SELECT* 2"  (cost=17568.92..17572.60 rows=184 width=30)"
+"              ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"                    ->  Seq Scan on y2001_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+"        ->  Subquery Scan on "*SELECT* 3"  (cost=17282.78..17286.40 rows=181 width=30)"
+"              ->  HashAggregate  (cost=17282.78..17284.59 rows=181 width=30)"
+"                    ->  Seq Scan on y2002_1test  (cost=0.00..13579.52 rows=740652 width=30)"
+"        ->  Subquery Scan on "*SELECT* 4"  (cost=17568.92..17572.60 rows=184 width=30)"
+"              ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"                    ->  Seq Scan on y2002_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+"        ->  Subquery Scan on "*SELECT* 5"  (cost=17282.78..17286.40 rows=181 width=30)"
+"              ->  HashAggregate  (cost=17282.78..17284.59 rows=181 width=30)"
+"                    ->  Seq Scan on y2003_1test  (cost=0.00..13579.52 rows=740652 width=30)"
+"        ->  Subquery Scan on "*SELECT* 6"  (cost=17568.92..17572.60 rows=184 width=30)"
+"              ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"                    ->  Seq Scan on y2003_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+"        ->  Subquery Scan on "*SELECT* 7"  (cost=17378.16..17381.80 rows=182 width=30)"
+"              ->  HashAggregate  (cost=17378.16..17379.98 rows=182 width=30)"
+"                    ->  Seq Scan on y2004_1test  (cost=0.00..13654.44 rows=744744 width=30)"
+"        ->  Subquery Scan on "*SELECT* 8"  (cost=17568.92..17572.60 rows=184 width=30)"
+"              ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"                    ->  Seq Scan on y2004_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+"        ->  Subquery Scan on "*SELECT* 9"  (cost=17282.78..17286.40 rows=181 width=30)"
+"              ->  HashAggregate  (cost=17282.78..17284.59 rows=181 width=30)"
+"                    ->  Seq Scan on y2005_1test  (cost=0.00..13579.52 rows=740652 width=30)"
+"        ->  Subquery Scan on "*SELECT* 10"  (cost=17568.92..17572.60 rows=184 width=30)"
+"              ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"                    ->  Seq Scan on y2005_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+"        ->  Subquery Scan on "*SELECT* 11"  (cost=17282.78..17286.40 rows=181 width=30)"
+"              ->  HashAggregate  (cost=17282.78..17284.59 rows=181 width=30)"
+"                    ->  Seq Scan on y2006_1test  (cost=0.00..13579.52 rows=740652 width=30)"
+"        ->  Subquery Scan on "*SELECT* 12"  (cost=17568.92..17572.60 rows=184 width=30)"
+"              ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"                    ->  Seq Scan on y2006_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+"        ->  Subquery Scan on "*SELECT* 13"  (cost=17282.78..17286.40 rows=181 width=30)"
+"              ->  HashAggregate  (cost=17282.78..17284.59 rows=181 width=30)"
+"                    ->  Seq Scan on y2007_1test  (cost=0.00..13579.52 rows=740652 width=30)"
+"        ->  Subquery Scan on "*SELECT* 14"  (cost=17568.92..17572.60 rows=184 width=30)"
+"              ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"                    ->  Seq Scan on y2007_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+
+
+*/
+
+
+-- ПРОБУЕМ ИМИТИРОВАТЬ ПОЛЬЗОВТАЛЬСКИЙ АГРЕГАТ, НО БЕЗ ХРАНИМОГО ВИДА, и зная что партиции не пересекаются делаем UNION ALL
+
+explain	select date,count(data)  from groupbytest.y2001_1test group by date
+union all select date,count(data)  from groupbytest.y2001_2test group by date
+union all select date,count(data)  from groupbytest.y2002_1test group by date
+union all select date,count(data)  from groupbytest.y2002_2test group by date
+union all select date,count(data)  from groupbytest.y2003_1test group by date
+union all select date,count(data)  from groupbytest.y2003_2test group by date
+union all select date,count(data)  from groupbytest.y2004_1test group by date
+union all select date,count(data)  from groupbytest.y2004_2test group by date
+union all select date,count(data)  from groupbytest.y2005_1test group by date
+union all select date,count(data)  from groupbytest.y2005_2test group by date
+union all select date,count(data)  from groupbytest.y2006_1test group by date
+union all select date,count(data)  from groupbytest.y2006_2test group by date
+union all select date,count(data)  from groupbytest.y2007_1test group by date
+union all select date,count(data)  from groupbytest.y2007_2test group by date;
+
+/*
+--ВЫПОЛНЕНИЕ:
+Суммарное время выполнения запроса: 3850 ms. - лучший результат!!! и самый чистый и простой план
+2556 строк получено.
+--ПЛАН
+"Result  (cost=17282.78..244108.40 rows=2556 width=12)"
+"  ->  Append  (cost=17282.78..244108.40 rows=2556 width=12)"
+"        ->  HashAggregate  (cost=17282.78..17284.59 rows=181 width=30)"
+"              ->  Seq Scan on y2001_1test  (cost=0.00..13579.52 rows=740652 width=30)"
+"        ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"              ->  Seq Scan on y2001_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+"        ->  HashAggregate  (cost=17282.78..17284.59 rows=181 width=30)"
+"              ->  Seq Scan on y2002_1test  (cost=0.00..13579.52 rows=740652 width=30)"
+"        ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"              ->  Seq Scan on y2002_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+"        ->  HashAggregate  (cost=17282.78..17284.59 rows=181 width=30)"
+"              ->  Seq Scan on y2003_1test  (cost=0.00..13579.52 rows=740652 width=30)"
+"        ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"              ->  Seq Scan on y2003_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+"        ->  HashAggregate  (cost=17378.16..17379.98 rows=182 width=30)"
+"              ->  Seq Scan on y2004_1test  (cost=0.00..13654.44 rows=744744 width=30)"
+"        ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"              ->  Seq Scan on y2004_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+"        ->  HashAggregate  (cost=17282.78..17284.59 rows=181 width=30)"
+"              ->  Seq Scan on y2005_1test  (cost=0.00..13579.52 rows=740652 width=30)"
+"        ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"              ->  Seq Scan on y2005_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+"        ->  HashAggregate  (cost=17282.78..17284.59 rows=181 width=30)"
+"              ->  Seq Scan on y2006_1test  (cost=0.00..13579.52 rows=740652 width=30)"
+"        ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"              ->  Seq Scan on y2006_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+"        ->  HashAggregate  (cost=17282.78..17284.59 rows=181 width=30)"
+"              ->  Seq Scan on y2007_1test  (cost=0.00..13579.52 rows=740652 width=30)"
+"        ->  HashAggregate  (cost=17568.92..17570.76 rows=184 width=30)"
+"              ->  Seq Scan on y2007_2test  (cost=0.00..13804.28 rows=752928 width=30)"
+
+
+
+*/
+
+-- просто мультирезультат - 3800, но это неудобно
+select date,count(data)  from groupbytest.y2001_1test group by date;
+select date,count(data)  from groupbytest.y2001_2test group by date;
+select date,count(data)  from groupbytest.y2002_1test group by date;
+select date,count(data)  from groupbytest.y2002_2test group by date;
+select date,count(data)  from groupbytest.y2003_1test group by date;
+select date,count(data)  from groupbytest.y2003_2test group by date;
+select date,count(data)  from groupbytest.y2004_1test group by date;
+select date,count(data)  from groupbytest.y2004_2test group by date;
+select date,count(data)  from groupbytest.y2005_1test group by date;
+select date,count(data)  from groupbytest.y2005_2test group by date;
+select date,count(data)  from groupbytest.y2006_1test group by date;
+select date,count(data)  from groupbytest.y2006_2test group by date;
+select date,count(data)  from groupbytest.y2007_1test group by date;
+select date,count(data)  from groupbytest.y2007_2test group by date;
+
 
 
 
