@@ -15,6 +15,21 @@ namespace pgPerfTest {
 	/// 	Общий интерфейс тестов
 	/// </summary>
 	public interface IPerformanceTest {
-		Task<PerformanceResult> ExecuteQueryAsync();
+		/// <summary>
+		/// Выполнить тест в синхронном варианте
+		/// </summary>
+		/// <returns></returns>
+		PerformanceResult Execute();
+		/// <summary>
+		/// Выполнить тест в асинхронном варианте
+		/// </summary>
+		/// <returns></returns>
+		Task<PerformanceResult> ExecuteAsync();
+
+		/// <summary>
+		/// Метод установки кастомной строки подключения
+		/// </summary>
+		/// <param name="connection"></param>
+		void SetConnection(string connection);
 	}
 }

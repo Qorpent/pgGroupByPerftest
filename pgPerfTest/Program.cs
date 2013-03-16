@@ -14,41 +14,73 @@ namespace pgPerfTest {
 	internal class Program {
 		private const int ITERATE_COUNT = 100;
 		private static void Main(string[] args) {
-			var test = new AllPartitionsInParallelTest();
+			var connection = DEFAULT_CONNECTION;
+			if(0!=args.Length) {
+				connection = args[0];
+			}
+			CommonPartitionalTestWithDetails(connection);
+			PerformMultiIterationTest<AllPartitionsInParallelTest>(connection);
+		}
+
+		private static void PerformMultiIterationTest<TTest>(string connection) where TTest:IPerformanceTest,new() {
+			Console.WriteLine();
+			Console.WriteLine("===================================================================================");
+			var test = new TTest();
+			test.SetConnection(connection);
+			Console.WriteLine("Выполняем множественную проверку {0} тестов ({1}) ...", ITERATE_COUNT, test.GetType());
+			Console.WriteLine("===================================================================================");
+			var totaltime = new TimeSpan();
+			for (var i = 0; i < ITERATE_COUNT; i++) {
+				if ((i%10) == 0) {
+					Console.WriteLine();
+				}
+				Console.Write(".");
+				totaltime += test.Execute().ExecuteTime;
+			}
+			Console.WriteLine();
+			Console.WriteLine("Общее время на {0} тестов : {1}", ITERATE_COUNT, totaltime);
+
+			var avg = TimeSpan.FromMilliseconds(totaltime.TotalMilliseconds/ITERATE_COUNT);
+			Console.WriteLine("Среднее время на тест : {0}", avg);
+			Console.WriteLine("===================================================================================");
+		}
+
+		private static void CommonPartitionalTestWithDetails(string connection) {
+			Console.WriteLine("Тестируем распаралелленный вариант с партициями");
+
+			var test = new AllPartitionsInParallelTest(null,connection);
 			var result = test.Execute();
 			if (null != result.Error) {
-				Console.ForegroundColor = ConsoleColor.Red;
-				Console.WriteLine("Ошибка! {0}:{1}", result.Error.GetType(), result.Error.Message);
-				Console.ResetColor();
+				WriteCommonPartiotionalTestError(result);
 			}
 			else {
-				Console.WriteLine("Общий результат: {0}", result.ExecuteTime);
-
-				foreach (var subresult in result.Subresults) {
-					var parttest = (SinglePartitionQueryingTest) subresult.Source;
-					if (null != subresult.Error) {
-						Console.ForegroundColor = ConsoleColor.Red;
-						Console.WriteLine("Ошибка! Партиция {0}_{1} : {2}:{3}", parttest.Year, parttest.HalfYear,
-						                  subresult.Error.GetType(), subresult.Error.Message);
-						Console.ResetColor();
-					}
-					else {
-						Console.WriteLine("Партиция {0}_{1} : {2}", parttest.Year, parttest.HalfYear, subresult.ExecuteTime);
-					}
-				}
-				Console.WriteLine("Выполняем множественную проверку {0} тестов...",ITERATE_COUNT);
-				var totaltime = new TimeSpan();
-				for (var i=0;i<ITERATE_COUNT;i++) {
-					if((i % 10)==0)Console.WriteLine();
-					Console.Write(".");
-					totaltime += test.Execute().ExecuteTime;
-				}
-				Console.WriteLine();
-				Console.WriteLine("Общее время на {0} тестов : {1}",ITERATE_COUNT,totaltime);
-
-				var avg = TimeSpan.FromMilliseconds(totaltime.TotalMilliseconds/ITERATE_COUNT);
-				Console.WriteLine("Среднее время на тест : {0}",avg);
+				WriteOutCommonTestDetails(result);
 			}
 		}
+
+		private static void WriteOutCommonTestDetails(PerformanceResult result) {
+			Console.WriteLine("Общий результат: {0}", result.ExecuteTime);
+
+			foreach (var subresult in result.Subresults) {
+				var parttest = (SinglePartitionQueryingTest) subresult.Source;
+				if (null != subresult.Error) {
+					Console.ForegroundColor = ConsoleColor.Red;
+					Console.WriteLine("Ошибка! Партиция {0}_{1} : {2}:{3}", parttest.Year, parttest.HalfYear,
+					                  subresult.Error.GetType(), subresult.Error.Message);
+					Console.ResetColor();
+				}
+				else {
+					Console.WriteLine("Партиция {0}_{1} : {2}", parttest.Year, parttest.HalfYear, subresult.ExecuteTime);
+				}
+			}
+		}
+
+		private static void WriteCommonPartiotionalTestError(PerformanceResult result) {
+			Console.ForegroundColor = ConsoleColor.Red;
+			Console.WriteLine("Ошибка! {0}:{1}", result.Error.GetType(), result.Error.Message);
+			Console.ResetColor();
+		}
+
+		public const string DEFAULT_CONNECTION = "Server=127.0.0.1;Port=5432;Database=test;Integrated Security=true;";
 	}
 }

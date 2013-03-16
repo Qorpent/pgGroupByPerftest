@@ -17,11 +17,13 @@ namespace pgPerfTest {
 	/// 	Общая абстракция теста на производительность в асинхронном режиме
 	/// </summary>
 	public abstract class AsyncPerformanceTestBase : IPerformanceTest {
+		
+
 		/// <summary>
 		/// 	Асинхронный вариант вызова
 		/// </summary>
 		/// <returns> </returns>
-		public Task<PerformanceResult> ExecuteQueryAsync() {
+		public Task<PerformanceResult> ExecuteAsync() {
 			return Task.Run(() =>
 				{
 					var result = new PerformanceResult {Source = this};
@@ -40,6 +42,26 @@ namespace pgPerfTest {
 				});
 		}
 
+		/// <summary>
+		/// Метод установки кастомной строки подключения
+		/// </summary>
+		/// <param name="connection"></param>
+		public virtual void SetConnection(string connection) {
+			this.Connection = connection;
+		}
+
+		protected string Connection { get;  private set; }
+
 		protected abstract void ExecuteInternalTest(PerformanceResult result);
+
+		/// <summary>
+		/// 	Синхронный вариант вызова
+		/// </summary>
+		/// <returns> </returns>
+		public PerformanceResult Execute() {
+			var task = ExecuteAsync();
+			task.Wait();
+			return task.Result;
+		}
 	}
 }

@@ -18,35 +18,33 @@ namespace pgPerfTest {
 	public class AllPartitionsInParallelTest : AsyncPerformanceTestBase {
 		private const int START_YEAR = 2001;
 		private const int END_YEAR = 2007;
-
+		public AllPartitionsInParallelTest():this(null){}
 		/// <summary>
 		/// 	Создает тест с набором партиций и с возможными собственными шаблоном запроса и соединения
 		/// </summary>
 		/// <param name="query"> </param>
 		/// <param name="connection"> </param>
-		public AllPartitionsInParallelTest(string query = null, string connection = null) {
+		public AllPartitionsInParallelTest(string query = null,string connection=null) {
 			_subtests = new ConcurrentBag<SinglePartitionQueryingTest>();
 			for (var year = START_YEAR; year <= END_YEAR; year++) {
-				_subtests.Add(new SinglePartitionQueryingTest(year, HalfYear.First, query, connection));
-				_subtests.Add(new SinglePartitionQueryingTest(year, HalfYear.Second, query, connection));
+				_subtests.Add(new SinglePartitionQueryingTest(year, HalfYear.First, query,connection));
+				_subtests.Add(new SinglePartitionQueryingTest(year, HalfYear.Second, query,connection));
 			}
 		}
 
-		/// <summary>
-		/// 	Синхронный вариант вызова
-		/// </summary>
-		/// <returns> </returns>
-		public PerformanceResult Execute() {
-			var task = ExecuteQueryAsync();
-			task.Wait();
-			return task.Result;
+		public override void SetConnection(string connection)
+		{
+			base.SetConnection(connection);
+			foreach (var singlePartitionQueryingTest in _subtests) {
+				singlePartitionQueryingTest.SetConnection(connection);
+			}
 		}
 
 		protected override void ExecuteInternalTest(PerformanceResult result) {
 			_subtests.AsParallel().ForAll(
 				_ =>
 					{
-						var task = _.ExecuteQueryAsync();
+						var task = _.ExecuteAsync();
 						task.Wait();
 						result.Subresults.Add(task.Result);
 					}
